@@ -50,6 +50,10 @@ Maintaining the docs will also become a more community-focused effort, which mea
 
 To visit the docs, [click here](https://screepers.gitbook.io/screeps-typescript-starter/).
 
+## Async features
+
+The promise constructor is provided in an ambient context. To make sure it doesn't break anything in screeps as `Promise` is still defined as a function, the polyfill is `PromisePoly`. It behaves just as `Promise` with a function to delay actions by a certain number of ticks with `PromisePoly._delay(ticks)`. Async/await "Just Works™" and is compiled using es6 polyfills. Rollup is set up to allow the es6 polyfill to use the promise polyfill.
+
 ## Contributing
 
 Issues, Pull Requests, and contribution to the docs are welcome! See our [Contributing Guidelines](CONTRIBUTING.md) for more details.
