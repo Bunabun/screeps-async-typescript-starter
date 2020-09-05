@@ -19,3 +19,6 @@ declare namespace NodeJS {
   }
 }
 
+interface Promise<T> {
+  configureQuota(predicate: ((index: number) => boolean) | number): Promise<T>
+}

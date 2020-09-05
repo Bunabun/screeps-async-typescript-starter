@@ -4,15 +4,15 @@
 function finallyConstructor(callback) {
   var constructor = this.constructor;
   return this.then(
-    function(value) {
+    function (value) {
       // @ts-ignore
-      return constructor.resolve(callback()).then(function() {
+      return constructor.resolve(callback()).then(function () {
         return value;
       });
     },
-    function(reason) {
+    function (reason) {
       // @ts-ignore
-      return constructor.resolve(callback()).then(function() {
+      return constructor.resolve(callback()).then(function () {
         // @ts-ignore
         return constructor.reject(reason);
       });
@@ -24,15 +24,16 @@ function isArray(x) {
   return Boolean(x && typeof x.length !== 'undefined');
 }
 
-function noop() {}
+function noop() { }
 
 // Polyfill for Function.prototype.bind
 function bind(fn, thisArg) {
-  return function() {
+  return function () {
     fn.apply(thisArg, arguments);
   };
 }
 
+var id = 0;
 /**
  * @constructor
  * @param {Function} fn
@@ -49,7 +50,9 @@ function PromisePoly(fn) {
   this._value = undefined;
   /** @type {!Array<!Function>} */
   this._deferreds = [];
-  this._sync = false;
+  /** @type {Function|number|undefined} */
+  this._quotaPredicate = undefined;
+  this._id = id++;
 
   doResolve(fn, this);
 }
@@ -64,7 +67,7 @@ function handle(self, deferred) {
   }
   self._handled = true;
 
-  var fn = function() {
+  var fn = function () {
     var cb = self._state === 1 ? deferred.onFulfilled : deferred.onRejected;
     if (cb === null) {
       (self._state === 1 ? resolve : reject)(deferred.promise, self._value);
@@ -79,14 +82,7 @@ function handle(self, deferred) {
     }
     resolve(deferred.promise, ret);
   };
-
-  if (!self._sync)
-  {
-    PromisePoly._immediateFn(fn);
-  } else {
-    console.log(self._sync);
-    fn();
-  }
+  PromisePoly._immediateFn(fn, self._quotaPredicate);
 }
 
 function resolve(self, newValue) {
@@ -125,25 +121,19 @@ function reject(self, newValue) {
 
 function finale(self) {
   if (self._state === 2 && self._deferreds.length === 0) {
-
-    var fn = function() {
+    var fn = function () {
       if (!self._handled) {
         PromisePoly._unhandledRejectionFn(self._value);
       }
     };
 
-    if (!self._sync)
-    {
-      PromisePoly._immediateFn(fn);
-    } else {
-      console.log(self._sync);
-      fn();
-    }
+    PromisePoly._immediateFn(fn);
   }
 
   for (var i = 0, len = self._deferreds.length; i < len; i++) {
     handle(self, self._deferreds[i]);
   }
+
   self._deferreds = null;
 }
 
@@ -166,12 +156,12 @@ function doResolve(fn, self) {
   var done = false;
   try {
     fn(
-      function(value) {
+      function (value) {
         if (done) return;
         done = true;
         resolve(self, value);
       },
-      function(reason) {
+      function (reason) {
         if (done) return;
         done = true;
         reject(self, reason);
@@ -184,11 +174,11 @@ function doResolve(fn, self) {
   }
 }
 
-PromisePoly.prototype['catch'] = function(onRejected) {
+PromisePoly.prototype['catch'] = function (onRejected) {
   return this.then(null, onRejected);
 };
 
-PromisePoly.prototype.then = function(onFulfilled, onRejected) {
+PromisePoly.prototype.then = function (onFulfilled, onRejected) {
   // @ts-ignore
   var prom = new this.constructor(noop);
 
@@ -198,12 +188,18 @@ PromisePoly.prototype.then = function(onFulfilled, onRejected) {
 
 PromisePoly.prototype['finally'] = finallyConstructor;
 
-PromisePoly.prototype._wait = function() {
-  this._sync = true;
+PromisePoly.prototype.configureQuota = function (predicate) {
+  if (predicate === false) {
+    this._quotaPredicate = undefined;
+  } else if (typeof predicate === "function" || typeof predicate === "number") {
+    this._quotaPredicate = predicate;
+  }
+
+  return this;
 }
 
-PromisePoly.all = function(arr) {
-  return new PromisePoly(function(resolve, reject) {
+PromisePoly.all = function (arr) {
+  return new PromisePoly(function (resolve, reject) {
     if (!isArray(arr)) {
       return reject(new TypeError('Promise.all accepts an array'));
     }
@@ -219,7 +215,7 @@ PromisePoly.all = function(arr) {
           if (typeof then === 'function') {
             then.call(
               val,
-              function(val) {
+              function (val) {
                 res(i, val);
               },
               reject
@@ -242,24 +238,24 @@ PromisePoly.all = function(arr) {
   });
 };
 
-PromisePoly.resolve = function(value) {
+PromisePoly.resolve = function (value) {
   if (value && typeof value === 'object' && value.constructor === PromisePoly) {
     return value;
   }
 
-  return new PromisePoly(function(resolve) {
+  return new PromisePoly(function (resolve) {
     resolve(value);
   });
 };
 
-PromisePoly.reject = function(value) {
-  return new PromisePoly(function(resolve, reject) {
+PromisePoly.reject = function (value) {
+  return new PromisePoly(function (resolve, reject) {
     reject(value);
   });
 };
 
-PromisePoly.race = function(arr) {
-  return new PromisePoly(function(resolve, reject) {
+PromisePoly.race = function (arr) {
+  return new PromisePoly(function (resolve, reject) {
     if (!isArray(arr)) {
       return reject(new TypeError('Promise.race accepts an array'));
     }
@@ -272,10 +268,11 @@ PromisePoly.race = function(arr) {
 
 PromisePoly.__callbacks__ = [];
 PromisePoly.__futureCallbacks__ = [];
-PromisePoly._immediateFn = function (fn, ticks) {
+PromisePoly._immediateFn = function (fn, predicate, ticks) {
   var obj = {
     _fn: fn,
-    _ticks: ticks
+    _ticks: ticks,
+    _predicate: predicate
   };
 
   if (ticks > 0) {
@@ -285,36 +282,25 @@ PromisePoly._immediateFn = function (fn, ticks) {
   }
 };
 
-// Promise._in = function (ticks, fn) {
-//   // return Promise._delay(ticks).then(fn);
-//   // @ts-ignore
-//   return new Promise(function(resolve, reject) {
-//     Promise._immediateFn(function() {
-//       Promise.resolve(fn()).then(resolve, reject);
-//     }, ticks);
-//   });
-// };
-
-// Promise._every = function (ticks, fn) {
-//   // return Promise._delay(ticks).then(fn);
-//   // @ts-ignore
-//   return new Promise(function(resolve, reject) {
-//     Promise._immediateFn(function() {
-//       Promise.resolve(fn()).then(resolve, reject);
-//     }, ticks);
-//   });
-// };
-
-PromisePoly._delay = function (ticks) {
-  // @ts-ignore
-  return new PromisePoly(function(resolve) {
-    PromisePoly._immediateFn(function() {
+PromisePoly.delay = function (ticks) {
+  return new PromisePoly(function (resolve) {
+    PromisePoly._immediateFn(function () {
       resolve(null);
-    }, ticks);
+    }, undefined, ticks);
   });
 };
 
-PromisePoly._unhandledRejectionFn = function _unhandledRejectionFn(err) {
+PromisePoly.yield = function (ticks) {
+  return PromisePoly.delay(0);
+};
+
+PromisePoly._setUnhandledRejectionFn = function (fn) {
+  if (fn && (typeof fn === "function" && fn.length >= 1)) {
+    PromisePoly._unhandledRejectionFn = fn;
+  }
+}
+
+PromisePoly._unhandledRejectionFn = function (err) {
   if (typeof console !== 'undefined' && console) {
     console.warn('Possible Unhandled Promise Rejection:', err); // eslint-disable-line no-console
   }

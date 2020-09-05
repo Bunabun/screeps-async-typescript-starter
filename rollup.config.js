@@ -5,7 +5,7 @@ import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import typescript from 'rollup-plugin-typescript2';
 import inject from '@rollup/plugin-inject';
-import fs from 'fs';
+import path from 'path';
 
 let cfg;
 const dest = process.env.DEST;
@@ -30,23 +30,11 @@ export default {
     commonjs(),
     typescript({tsconfig: "./tsconfig.json", clean: true}),
     inject({
-      PromisePoly: 'promisepolyfill'
-    }),
-    {
-      writeBundle({file}) {
-        if (file === outputFile) {
-          fs.readFile(file, 'utf8', function (err,data) {
-            if (err) {
-              return console.log(err);
-            }
-            var result = data.replace(/P = Promise/g, 'P = PromisePoly');
-
-            fs.writeFile(file, result, 'utf8', function (err) {
-               if (err) return console.log(err);
-            });
-          });
-        }
-      }
-    }
+      Promise: path.resolve('src/polyfills/promisepolyfill/index.js'),
+      setInterval: path.resolve('src/polyfills/setintervalpolyfill/index.js'),
+      setTimeout: path.resolve('src/polyfills/settimeoutpolyfill/index.js'),
+      clearInterval: path.resolve('src/polyfills/clearintervalpolyfill/index.js'),
+      clearTimeout: path.resolve('src/polyfills/cleartimeoutpolyfill/index.js')
+    })
   ]
 }
